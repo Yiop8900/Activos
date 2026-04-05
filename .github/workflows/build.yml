@@ -1,0 +1,76 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Write Google credentials
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: echo "$env:GOOGLE_CREDENTIALS" | Out-File -FilePath src/main/resources/credentials.json -Encoding utf8 -NoNewline
+        shell: powershell
+
+      - name: Build fat JAR
+        run: mvn clean package -q
+
+      - name: Create bundled JRE with jlink
+        shell: powershell
+        run: |
+          jlink `
+            --module-path "$env:JAVA_HOME\jmods" `
+            --add-modules java.base,java.datatransfer,java.desktop,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.security.jgss,java.security.sasl,java.sql,java.xml,java.xml.crypto,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.naming.dns,jdk.net,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.zipfs `
+            --output dist/jre `
+            --strip-debug `
+            --no-man-pages `
+            --no-header-files `
+            --compress=2
+
+      - name: Assemble dist folder
+        shell: powershell
+        run: |
+          Copy-Item target/Activos-1.0-SNAPSHOT.jar dist/
+          Copy-Item SistemaActivos.bat dist/
+          Copy-Item actualizar.ps1 dist/
+
+      - name: Zip dist
+        shell: powershell
+        run: Compress-Archive -Path dist/* -DestinationPath SistemaActivos.zip -Force
+
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+          git tag latest
+          git push origin latest
+          gh release create latest \
+            --title "Ultima version" \
+            --notes "Actualizado el $(date +'%d/%m/%Y')" \
+            SistemaActivos.zip \
+            target/Activos-1.0-SNAPSHOT.jar

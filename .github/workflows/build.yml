@@ -31,7 +31,9 @@ jobs:
       - name: Write Google credentials
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: echo "$env:GOOGLE_CREDENTIALS" | Out-File -FilePath src/main/resources/credentials.json -Encoding utf8 -NoNewline
+        run: |
+          New-Item -ItemType Directory -Path src/main/resources -Force | Out-Null
+          echo "$env:GOOGLE_CREDENTIALS" | Out-File -FilePath src/main/resources/credentials.json -Encoding utf8 -NoNewline
         shell: powershell
 
       - name: Build fat JAR
